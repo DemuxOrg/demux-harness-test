@@ -21,6 +21,7 @@ _LATIN_TRANSLITERATION = str.maketrans(
         "ø": "o",
         "Œ": "OE",
         "œ": "oe",
+        "ẞ": "SS",
         "ß": "ss",
         "Þ": "TH",
         "þ": "th",

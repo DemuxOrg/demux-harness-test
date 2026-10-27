@@ -24,6 +24,7 @@ def slugify():
         ("  HELLO---World!! ", "hello-world"),
         ("release 2.4 (beta)", "release-2-4-beta"),
         ("Crème Brûlée", "creme-brulee"),
+        ("ẞ", "ss"),
         ("Cafe\u0301 au lait", "cafe-au-lait"),
         ("", ""),
         ("!!!", ""),
