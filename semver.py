@@ -12,6 +12,29 @@ _VERSION_PATTERN = re.compile(
     r"(?:\+(?P<build>[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?"
 )
 _NUMERIC_IDENTIFIER = re.compile(r"[0-9]+\Z")
+_DECIMAL_CHUNK_BASE = 1_000_000_000
+
+
+def _parse_decimal(text: str) -> int:
+    """Convert ASCII decimal digits without Python's string digit limit."""
+    value = 0
+    for digit in text:
+        value = value * 10 + ord(digit) - ord("0")
+    return value
+
+
+def _format_decimal(value: int) -> str:
+    """Format an integer without Python's string digit limit."""
+    if value < 0:
+        return "-" + _format_decimal(-value)
+    if value < _DECIMAL_CHUNK_BASE:
+        return str(value)
+
+    chunks = []
+    while value:
+        value, chunk = divmod(value, _DECIMAL_CHUNK_BASE)
+        chunks.append(chunk)
+    return str(chunks[-1]) + "".join(f"{chunk:09d}" for chunk in reversed(chunks[:-1]))
 
 
 @dataclass(frozen=True)
@@ -25,7 +48,9 @@ class Version:
     build: tuple[str, ...] = ()
 
     def __str__(self) -> str:
-        version = f"{self.major}.{self.minor}.{self.patch}"
+        version = ".".join(
+            _format_decimal(part) for part in (self.major, self.minor, self.patch)
+        )
         if self.prerelease:
             version += "-" + ".".join(self.prerelease)
         if self.build:
@@ -49,15 +74,19 @@ def parse(text: str) -> Version:
     prerelease_text = match.group("prerelease")
     prerelease = tuple(prerelease_text.split(".")) if prerelease_text else ()
     for identifier in prerelease:
-        if _NUMERIC_IDENTIFIER.fullmatch(identifier) and len(identifier) > 1 and identifier.startswith("0"):
+        if (
+            _NUMERIC_IDENTIFIER.fullmatch(identifier)
+            and len(identifier) > 1
+            and identifier.startswith("0")
+        ):
             raise ValueError(f"numeric prerelease identifier has a leading zero: {identifier!r}")
 
     build_text = match.group("build")
     build = tuple(build_text.split(".")) if build_text else ()
     return Version(
-        int(match.group("major")),
-        int(match.group("minor")),
-        int(match.group("patch")),
+        _parse_decimal(match.group("major")),
+        _parse_decimal(match.group("minor")),
+        _parse_decimal(match.group("patch")),
         prerelease,
         build,
     )
@@ -73,9 +102,10 @@ def _compare_prerelease(left: tuple[str, ...], right: tuple[str, ...]) -> int:
         left_numeric = _NUMERIC_IDENTIFIER.fullmatch(left_id) is not None
         right_numeric = _NUMERIC_IDENTIFIER.fullmatch(right_id) is not None
         if left_numeric and right_numeric:
-            left_value, right_value = int(left_id), int(right_id)
-            if left_value != right_value:
-                return -1 if left_value < right_value else 1
+            if len(left_id) != len(right_id):
+                return -1 if len(left_id) < len(right_id) else 1
+            if left_id != right_id:
+                return -1 if left_id < right_id else 1
         elif left_numeric != right_numeric:
             return -1 if left_numeric else 1
         elif left_id != right_id:
@@ -102,9 +132,12 @@ def bump(text: str, part: str) -> str:
     """Increment one core component and discard prerelease/build metadata."""
     version = parse(text)
     if part == "major":
-        return f"{version.major + 1}.0.0"
+        return f"{_format_decimal(version.major + 1)}.0.0"
     if part == "minor":
-        return f"{version.major}.{version.minor + 1}.0"
+        return f"{_format_decimal(version.major)}.{_format_decimal(version.minor + 1)}.0"
     if part == "patch":
-        return f"{version.major}.{version.minor}.{version.patch + 1}"
+        return ".".join(
+            _format_decimal(value)
+            for value in (version.major, version.minor, version.patch + 1)
+        )
     raise ValueError(f"unknown version part: {part!r}")
